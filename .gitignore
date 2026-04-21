@@ -6,3 +6,9 @@ backend/**/*.pyc
 backend/*.db
 .venv/
 .mypy_cache/
+.DS_Store
+frontend/public/branding/*.png
+frontend/public/branding/*.jpg
+frontend/public/branding/*.jpeg
+frontend/public/branding/*.webp
+frontend/public/branding/*.gif

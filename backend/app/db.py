@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import os
 import sqlite3
@@ -7,8 +8,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = BASE_DIR.parent
 DEFAULT_DB_PATH = BASE_DIR / "stamp_rally.db"
 DB_PATH = Path(os.environ.get("STAMP_RALLY_DB_PATH", str(DEFAULT_DB_PATH)))
+FACILITIES_CSV_PATH = Path(
+    os.environ.get("STAMP_FACILITIES_CSV_PATH", str(REPO_ROOT / "data" / "facilities.csv"))
+)
 
 
 def set_db_path(path: str) -> None:
@@ -53,53 +58,123 @@ def _seed_participant_and_token(connection: sqlite3.Connection) -> None:
 
 
 def _seed_venues(connection: sqlite3.Connection) -> None:
-    venue_count = connection.execute("SELECT COUNT(*) FROM venues").fetchone()[0]
-    if venue_count > 0:
+    if not FACILITIES_CSV_PATH.exists():
         return
-    now = datetime.now(UTC)
-    active_until = now + timedelta(days=60)
-    connection.executemany(
-        """
-        INSERT INTO venues (
-            id, code, name, location, lat, lon, radius_m, active_from, active_until
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                "venue-tokyo",
-                "IMS-TOKYO",
-                "東京タワー会場",
-                "東京都港区",
-                35.6586,
-                139.7454,
-                300.0,
-                now.isoformat(),
-                active_until.isoformat(),
-            ),
-            (
-                "venue-osaka",
-                "IMS-OSAKA",
-                "大阪城会場",
-                "大阪府大阪市",
-                34.6873,
-                135.5262,
-                300.0,
-                now.isoformat(),
-                active_until.isoformat(),
-            ),
-            (
-                "venue-hakodate",
-                "IMS-HAKODATE",
-                "函館山会場",
-                "北海道函館市",
-                41.7597,
-                140.7042,
-                350.0,
-                now.isoformat(),
-                active_until.isoformat(),
-            ),
-        ],
+    with FACILITIES_CSV_PATH.open("r", encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for index, row in enumerate(reader, start=1):
+            name = (row.get("施設名") or row.get("会場名") or "").strip()
+            location = (row.get("住所") or "").strip()
+            specialty = (row.get("特産品") or "").strip()
+            if not name or not location:
+                continue
+            venue_id = f"venue-csv-{index:04d}"
+            code = f"FAC-{index:04d}"
+            lat = _parse_float(
+                row.get("緯度")
+                or row.get("lat")
+                or row.get("latitude")
+            )
+            lon = _parse_float(
+                row.get("経度")
+                or row.get("lon")
+                or row.get("lng")
+                or row.get("longitude")
+            )
+            radius = _parse_float(row.get("半径") or row.get("radius_m")) or 300.0
+            geofence_enabled = 1 if lat is not None and lon is not None else 0
+            lat_value = lat if lat is not None else 0.0
+            lon_value = lon if lon is not None else 0.0
+            now = datetime.now(UTC)
+            active_until = now + timedelta(days=3650)
+            connection.execute(
+                """
+                INSERT INTO venues (
+                    id, code, name, location, lat, lon, radius_m,
+                    active_from, active_until, image_url, description, geofence_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(code) DO UPDATE SET
+                    name = excluded.name,
+                    location = excluded.location,
+                    lat = excluded.lat,
+                    lon = excluded.lon,
+                    radius_m = excluded.radius_m,
+                    image_url = excluded.image_url,
+                    description = excluded.description,
+                    geofence_enabled = excluded.geofence_enabled
+                """,
+                (
+                    venue_id,
+                    code,
+                    name,
+                    location,
+                    lat_value,
+                    lon_value,
+                    radius,
+                    now.isoformat(),
+                    active_until.isoformat(),
+                    f"/stamps/{code}.png",
+                    specialty,
+                    geofence_enabled,
+                ),
+            )
+
+
+def _seed_demo_stamps(connection: sqlite3.Connection) -> None:
+    participant_id = "participant-demo-001"
+    participant = connection.execute(
+        "SELECT id FROM participants WHERE id = ?",
+        (participant_id,),
+    ).fetchone()
+    if participant is None:
+        return
+
+    target_codes = (
+        "FAC-0001",
+        "FAC-0002",
+        "FAC-0003",
+        "FAC-0004",
+        "FAC-0073",
+        "FAC-0074",
     )
+    placeholders = ",".join("?" for _ in target_codes)
+    venues = connection.execute(
+        """
+        SELECT id, code
+        FROM venues
+        WHERE code IN ({placeholders})
+        ORDER BY code
+        """.format(placeholders=placeholders),
+        target_codes,
+    ).fetchall()
+    if not venues:
+        return
+
+    now = datetime.now(UTC).isoformat()
+    for row in venues:
+        venue_id = str(row["id"])
+        stamp_id = f"seed-{participant_id}-{venue_id}"
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO stamp_records (
+                id, participant_id, venue_id, stamped_at, source
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (stamp_id, participant_id, venue_id, now, "seed"),
+        )
+
+
+def _parse_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 
 def init_db() -> None:
@@ -152,6 +227,18 @@ def init_db() -> None:
             )
             """
         )
+        venue_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(venues)").fetchall()
+        }
+        if "image_url" not in venue_columns:
+            connection.execute("ALTER TABLE venues ADD COLUMN image_url TEXT")
+        if "description" not in venue_columns:
+            connection.execute("ALTER TABLE venues ADD COLUMN description TEXT")
+        if "geofence_enabled" not in venue_columns:
+            connection.execute(
+                "ALTER TABLE venues ADD COLUMN geofence_enabled INTEGER NOT NULL DEFAULT 0"
+            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS stamp_records (
@@ -169,3 +256,4 @@ def init_db() -> None:
 
         _seed_participant_and_token(connection)
         _seed_venues(connection)
+        _seed_demo_stamps(connection)

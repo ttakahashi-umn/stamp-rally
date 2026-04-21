@@ -8,6 +8,8 @@ export type ProgressItem = {
   code: string
   name: string
   location: string
+  imageUrl: string
+  description: string
   completed: boolean
 }
 

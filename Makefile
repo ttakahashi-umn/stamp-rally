@@ -1,4 +1,4 @@
-.PHONY: up down build logs ps restart
+.PHONY: up down build logs ps restart qrcodes
 
 up:
 	docker compose up -d --build
@@ -18,3 +18,6 @@ ps:
 restart:
 	docker compose down
 	docker compose up -d --build
+
+qrcodes:
+	python "backend/scripts/generate_qrcodes.py"

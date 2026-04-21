@@ -12,7 +12,9 @@ class VenueRepository:
     def find_by_code(self, code: str) -> sqlite3.Row | None:
         row = self.connection.execute(
             """
-            SELECT id, code, name, location, lat, lon, radius_m, active_from, active_until
+            SELECT
+                id, code, name, location, lat, lon, radius_m,
+                active_from, active_until, geofence_enabled
             FROM venues
             WHERE code = ?
             """,
@@ -29,5 +31,9 @@ class VenueRepository:
 
     def list_all(self) -> list[sqlite3.Row]:
         return self.connection.execute(
-            "SELECT id, code, name, location FROM venues ORDER BY code"
+            """
+            SELECT id, code, name, location, image_url, description
+            FROM venues
+            ORDER BY code
+            """
         ).fetchall()

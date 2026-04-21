@@ -30,7 +30,7 @@ export function AuthGate({ onAuthenticated }: Props) {
           onAuthenticated(storedSession)
           return
         }
-        setError('案内メールのリンクからアクセスしてください。')
+        setError('案内メールのQRコードを読み込んでアクセスしてください。')
       } catch (authError) {
         window.localStorage.removeItem(SESSION_STORAGE_KEY)
         setError(authError instanceof Error ? authError.message : '認証に失敗しました')

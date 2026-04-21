@@ -37,13 +37,18 @@ class StampService:
                 status_code=status.HTTP_403_FORBIDDEN, detail="会場情報が無効です"
             )
 
-        if not self._inside_radius(
-            latitude, longitude, float(venue["lat"]), float(venue["lon"]), float(venue["radius_m"])
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="会場付近で再試行してください",
-            )
+        if int(venue["geofence_enabled"]):
+            if not self._inside_radius(
+                latitude,
+                longitude,
+                float(venue["lat"]),
+                float(venue["lon"]),
+                float(venue["radius_m"]),
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="会場付近で再試行してください",
+                )
 
         existing = self.record_repo.find_by_participant_and_venue(
             participant_id, str(venue["id"])

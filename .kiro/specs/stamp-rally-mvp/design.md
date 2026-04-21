@@ -10,7 +10,7 @@
 ### Goals
 - メール導線から数タップで参加開始できる
 - 同一端末で再訪時の再認証負荷を下げる
-- 会場QR押印と進捗表示を一貫した体験で提供する
+- 会場QR押印と会場詳細表示を一貫した体験で提供する
 - 不正押印を抑止し、結果の信頼性を保つ
 
 ### Non-Goals
@@ -23,9 +23,10 @@
 
 ### This Spec Owns
 - 参加者向け初回認証と端末再訪認証のWebフロー
-- 会場QR押印処理（検証、重複防止、結果表示）
+- 会場QR押印処理（検証、重複防止、結果表示、カメラ専用UI）
 - 会場緯度経度に基づく押印可否判定
-- 参加者ごとのスタンプ進捗表示
+- 参加者ごとの会場一覧表示と押印済み詳細シート
+- CSV/静的アセット運用（会場データ、スタンプ画像、QR一括生成）
 
 ### Out of Boundary
 - メール配信基盤の構築/運用
@@ -100,9 +101,13 @@ frontend/src/
 │   ├── auth/
 │   │   └── AuthGate.tsx         # 初回認証と再訪判定画面
 │   └── stamp/
-│       ├── StampList.tsx        # 一覧と進捗表示
-│       └── StampScanAction.tsx  # QR入力/位置情報連携押印
+│       ├── StampList.tsx        # 3列会場一覧と押印済み詳細シート
+│       └── StampScanAction.tsx  # カメラQR読取/位置情報連携押印
 └── App.tsx                      # 画面遷移と全体状態管理
+
+frontend/public/
+├── stamps/                      # 会場スタンプ画像 (FAC-XXXX.png)
+└── branding/                    # ヘッダーロゴ画像
 
 backend/app/
 ├── main.py                      # ルート登録と依存初期化
@@ -118,14 +123,23 @@ backend/app/
 └── routes/
     ├── auth_routes.py           # /api/auth/* エンドポイント
     └── stamp_routes.py          # /api/stamps/* エンドポイント
+
+backend/scripts/
+└── generate_qrcodes.py          # 署名付き会場QR PNG一括生成
+
+data/
+├── facilities.csv               # 会場マスタ入力
+└── qrcodes/                     # 生成済み会場QR
 ```
 
 ### Modified Files
 - `frontend/src/App.tsx` — 認証ゲート導入と画面責務分割
-- `frontend/src/App.css` — 認証/押印状態表示のスタイル追加
+- `frontend/src/App.css` — カメラUI、会場グリッド、詳細ボトムシート、ロゴレイアウトのスタイル追加
 - `backend/app/main.py` — 既存エンドポイント分割と新ルート組み込み
-- `backend/app/db.py` — 新テーブルDDLと初期データ投入
-- `README.md` — 新APIフローと運用前提の更新
+- `backend/app/db.py` — 新テーブルDDL、CSV起点会場投入、デモ押印初期化
+- `backend/scripts/generate_qrcodes.py` — 会場QR生成運用の追加
+- `Makefile` — `qrcodes` タスク追加
+- `README.md` — 新APIフローとアセット運用手順の更新
 
 ## System Flows
 
@@ -151,7 +165,43 @@ sequenceDiagram
 
 Key Decisions:
 - 押印は単一APIで完結し、失敗理由を参加者に返す。
-- 進捗画面は押印後に再取得して整合性を優先する。
+- 会場一覧は3列グリッドで押印済み先頭表示とし、押印済みタップで下部詳細シートを表示する。
+- カメラ起動時のみプレビューを表示し、60秒タイムアウトで自動停止する。
+- 会場データ/スタンプ画像/QR画像はCSV+静的ファイル運用を採用する。
+
+## UI Screen Inventory
+
+| Screen ID | 画面名 | 主な役割 | 主なUI要素 |
+|-----------|--------|----------|------------|
+| S1 | 認証確認画面 | URLトークンと端末セッションを判定し参加可否を決定する | 認証中表示、未認証エラーメッセージ |
+| S2 | スタンプ一覧画面 | 会場一覧を3列で表示し押印状態を把握する | ロゴヘッダー、会場グリッド、カメラ起動ボタン |
+| S3 | QR読取状態 | カメラ起動中にQR読み取りと押印要求を行う | カメラプレビュー、60秒タイムアウト、結果メッセージ |
+| S4 | 会場詳細シート | 押印済み会場の詳細情報を下部スライドで表示する | 施設名、施設写真、紹介（住所/説明）、特産品（名前/画像） |
+
+### UI Navigation Flow
+
+```mermaid
+flowchart TD
+    A["アプリ起動"] --> B{"認証情報あり?"}
+    B -->|URL tokenあり| C["/api/auth/activate"]
+    B -->|session tokenあり| D["/api/auth/session"]
+    B -->|なし| E["未認証メッセージ表示<br/>案内メールのQRコード読取を促す"]
+    C -->|成功| F["S2: スタンプ一覧画面"]
+    D -->|有効| F
+    C -->|失敗| E
+    D -->|無効| E
+
+    F --> G["カメラ起動"]
+    G --> H["S3: QR読取状態"]
+    H -->|読取成功| I["/api/stamps/scan"]
+    H -->|60秒経過| F
+    I -->|押印成功/既取得| J["/api/stamps/progress 再取得"]
+    I -->|失敗| F
+    J --> F
+
+    F -->|押印済みカードをタップ| K["S4: 会場詳細シート"]
+    K -->|閉じる| F
+```
 
 ## Requirements Traceability
 
@@ -162,15 +212,18 @@ Key Decisions:
 | 3 | 会場QR押印 | StampScanAction, Stamp Validation Service | `POST /api/stamps/scan` | 押印フロー |
 | 4 | 位置情報判定 | Stamp Validation Service, Venue Repository | `POST /api/stamps/scan` | 押印フロー |
 | 5 | 不正/異常拒否 | Stamp Validation Service, Error Mapper | `POST /api/stamps/scan` | 押印フロー |
-| 6 | 進捗可視化 | StampList, Progress Service | `GET /api/stamps/progress` | 押印後再取得 |
+| 6 | 会場一覧・詳細表示 | StampList, Progress Service | `GET /api/stamps/progress` | 押印後再取得 |
+| 7 | 会場データ・画像運用 | db seed, QR script, static assets | `make qrcodes` | 初期化/運用 |
+| 8 | 画面ブランディング | App header, branding assets | N/A | 初期表示 |
 
 ## Components and Interfaces
 
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|--------------|--------|--------------|---------------------------|-----------|
 | AuthGate | Frontend | 認証状態に応じた画面遷移 | 1, 2 | auth-client (P0) | Service, State |
-| StampScanAction | Frontend | 押印実行と結果表示 | 3, 4, 5 | stamp-client (P0) | Service, State |
-| StampList | Frontend | 進捗と一覧表示 | 6 | stamp-client (P0) | Service, State |
+| StampScanAction | Frontend | カメラ押印実行と結果表示 | 3, 4, 5 | stamp-client (P0) | Service, State |
+| StampList | Frontend | 3列一覧と押印済み詳細表示 | 6 | stamp-client (P0) | Service, State |
+| QR Generator Script | Backend Utility | 会場QRを一括生成 | 7 | stamp_service payload rules (P1) | Batch |
 | Auth API | Backend Route | 初回認証/再訪判定 | 1, 2 | auth_service (P0) | API |
 | Stamp API | Backend Route | 押印/進捗契約提供 | 3, 4, 5, 6 | stamp_service (P0) | API |
 | Stamp Validation Service | Backend Domain | 押印可否判定統合 | 3, 4, 5 | repositories (P0) | Service |
@@ -255,7 +308,7 @@ interface StampClient {
 ##### API Contract
 | Method | Endpoint | Request | Response | Errors |
 |--------|----------|---------|----------|--------|
-| POST | /api/stamps/scan | `{ qr_payload: string, latitude: number, longitude: number }` | `{ status: "stamped" \| "already_stamped", stamp_id: string }` | 400, 401, 403, 409, 410 |
+| POST | /api/stamps/scan | `{ qr_payload: string, latitude: number, longitude: number }` | `{ status: "stamped" \| "already_stamped", stamp_id?: string, message: string }` | 400, 401, 403, 410 |
 | GET | /api/stamps/progress | Header `Authorization` | `{ total: number, completed: number, items: StampItem[] }` | 401, 500 |
 
 #### Stamp Validation Service
@@ -309,7 +362,7 @@ class StampValidationService:
 ### Physical Data Model
 - `participants(id, email_hash, created_at)`
 - `device_sessions(id, participant_id, session_token_hash, expires_at, revoked_at)`
-- `venues(id, code, name, lat, lon, radius_m, active_from, active_until)`
+- `venues(id, code, name, location, lat, lon, radius_m, active_from, active_until, image_url, description, geofence_enabled)`
 - `stamp_records(id, participant_id, venue_id, stamped_at, source)`
 - インデックス:
   - `idx_sessions_token` on `device_sessions(session_token_hash)`
@@ -345,7 +398,8 @@ class StampValidationService:
 ### E2E/UI Tests
 - メール導線起動から認証完了までの遷移
 - 再訪時に認証画面を経ず進捗画面へ遷移
-- 押印成功後に達成件数が更新される
+- 押印成功後に押印済み会場が先頭表示へ更新される
+- 押印済み会場タップで下部詳細シートが表示される
 
 ### Performance/Load
 - 同時押印リクエスト時の成功率とレスポンス時間測定

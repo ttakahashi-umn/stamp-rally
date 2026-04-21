@@ -58,20 +58,21 @@ function App() {
 
   return (
     <main className="container">
-      <h1>Stamp Rally</h1>
-      <p className="subtitle">IMS 70周年 スタンプラリーMVP</p>
+      <div className="app-branding">
+        <img src="/branding/logo.png" alt="IMSグループ" className="app-logo" />
+        <img
+          src="/branding/logo_70_120.png"
+          alt="IMSグループ70周年ロゴ"
+          className="app-logo-anniversary"
+        />
+      </div>
 
       {!sessionToken ? (
         <AuthGate onAuthenticated={handleAuthenticated} />
       ) : (
         <>
           <StampScanAction sessionToken={sessionToken} onStamped={handleStamped} />
-          <StampList
-            progress={progress}
-            loading={loading}
-            error={error}
-            onReload={() => void loadProgress()}
-          />
+          <StampList progress={progress} loading={loading} error={error} />
         </>
       )}
     </main>

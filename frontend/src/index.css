@@ -1,5 +1,14 @@
 :root {
-  font-family: Inter, system-ui, sans-serif;
+  font-family:
+    "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    "Meiryo",
+    "Noto Sans JP",
+    -apple-system,
+    BlinkMacSystemFont,
+    system-ui,
+    sans-serif;
   line-height: 1.5;
   color: #1b1b1b;
   background: #f5f6f8;

@@ -22,6 +22,8 @@ class ProgressService:
                 code=str(venue["code"]),
                 name=str(venue["name"]),
                 location=str(venue["location"]),
+                image_url=str(venue["image_url"] or ""),
+                description=str(venue["description"] or ""),
                 completed=str(venue["id"]) in stamped_set,
             )
             for venue in venues

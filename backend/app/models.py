@@ -35,6 +35,8 @@ class ProgressItem(BaseModel):
     code: str
     name: str
     location: str
+    image_url: str
+    description: str
     completed: bool
 
 

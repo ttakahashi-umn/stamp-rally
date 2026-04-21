@@ -8,6 +8,8 @@ type ProgressApi = {
     code: string
     name: string
     location: string
+    image_url: string
+    description: string
     completed: boolean
   }>
 }
@@ -34,6 +36,8 @@ export async function fetchProgress(sessionToken: string): Promise<Progress> {
       code: item.code,
       name: item.name,
       location: item.location,
+      imageUrl: item.image_url,
+      description: item.description,
       completed: item.completed,
     })),
   }

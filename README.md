@@ -23,6 +23,16 @@ make down
 make logs
 ```
 
+会場QRコード生成:
+
+```bash
+make qrcodes
+```
+
+- 出力先: `data/qrcodes/FAC-XXXX.png`
+- 署名鍵: 環境変数 `STAMP_QR_SECRET`（未指定時は開発用デフォルト）
+- 期限: デフォルトで生成時から180日（`backend/scripts/generate_qrcodes.py` の引数で変更可能）
+
 ### 1) フロントエンド
 
 ```bash
@@ -53,12 +63,7 @@ uvicorn app.main:app --reload --port 8000
 
 1. `make up` で起動
 2. ブラウザで `http://localhost:5173/?token=demo-auth-token` を開く
-3. QRペイロードを入力して押印
+3. 事前登録済み会場のQRを読み取って押印
 
-QRペイロードは以下コマンドで生成できます。
-
-```bash
-cd backend
-source .venv/bin/activate
-python -c "from datetime import datetime,UTC,timedelta;from app.db import get_connection;from app.repositories.venue_repo import VenueRepository;from app.repositories.stamp_record_repo import StampRecordRepository;from app.stamp_service import StampService;svc=StampService(VenueRepository(get_connection()),StampRecordRepository(get_connection()));print(svc.create_payload('IMS-TOKYO',int((datetime.now(UTC)+timedelta(minutes=10)).timestamp())))"
-```
+このリポジトリでは `data/facilities.csv` を初期データとして `venues` へ取り込みます。  
+列は `施設名` / `住所` / `特産品` を必須とし、`緯度` / `経度` は任意です。

@@ -7,11 +7,14 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./data:/data:ro
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
     depends_on:
       - backend
     ports:
