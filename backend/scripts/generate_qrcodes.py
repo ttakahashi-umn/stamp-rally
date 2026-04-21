@@ -36,8 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--days-valid",
         type=int,
-        default=180,
-        help="Validity period in days from now if --expires-at is omitted (default: 180)",
+        default=30,
+        help="Validity period in days from now if --expires-at is omitted (default: 30)",
     )
     parser.add_argument(
         "--expires-at",

@@ -31,7 +31,7 @@ make qrcodes
 
 - 出力先: `data/qrcodes/FAC-XXXX.png`
 - 署名鍵: 環境変数 `STAMP_QR_SECRET`（未指定時は開発用デフォルト）
-- 期限: デフォルトで生成時から180日（`backend/scripts/generate_qrcodes.py` の引数で変更可能）
+- 期限: デフォルトで生成時から30日（`backend/scripts/generate_qrcodes.py` の引数で変更可能）
 
 ### 1) フロントエンド
 
